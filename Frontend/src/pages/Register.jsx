@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useContext, useState } from 'react';
 import { Link } from 'react-router-dom';
-import axios from '../config/axios'; // Adjust the import path as necessary
+import axios from '../config/axios'; 
+import { UserContext } from '../context/user.context';
 import { useNavigate } from 'react-router-dom';
 
 const Register = () => {
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+
+    const {setUser} = useContext(UserContext); // Assuming you have a UserContext to manage user state
 
     const navigate = useNavigate()
 
@@ -19,12 +22,14 @@ const Register = () => {
         axios.post('/users/register', data)
             .then((response) => {
                 console.log(response.data);
-                navigate('/'); // Redirect to login page on successful registration
-                // Handle successful registration (e.g., store token, redirect, etc.)
+
+              localStorage.setItem('token', response.data.token);
+              setUser(response.data.user);
+
+                navigate('/'); 
             })
             .catch((error) => {
                 console.error('Registration error:', error);
-                // Handle registration error (e.g., show error message)
             });
     }
 

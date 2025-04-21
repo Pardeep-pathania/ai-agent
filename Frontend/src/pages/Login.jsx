@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from '../config/axios'; // Adjust the import path as necessary
+import axios from '../config/axios';
+import { UserContext } from '../context/user.context';
 
 const Login = () => {
 
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  const { setUser } = useContext(UserContext); // Assuming you have a UserContext to manage user state
 
   const navigate = useNavigate()
 
@@ -20,12 +23,17 @@ const Login = () => {
     axios.post('/users/login', data)
       .then((response) => {
         console.log(response.data);
+
+        localStorage.setItem('token', response.data.token);
+
+        setUser(response.data.user); 
+
         navigate('/'); // Redirect to home page on successful login
-        // Handle successful login (e.g., store token, redirect, etc.)
+      
       })
       .catch((error) => {
         console.error('Login error:', error);
-        // Handle login error (e.g., show error message)
+       
       });
   }
 
