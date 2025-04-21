@@ -12,6 +12,7 @@ export const authUser = async (req, res, next) => {
     if (!token) {
         return res.status(401).send({ error: "Unauthorized user" });
     }
+    
 
     const isBlacklisted = await redisClient.get(token);
 
