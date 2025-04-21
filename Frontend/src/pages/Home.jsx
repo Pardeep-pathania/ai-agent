@@ -32,6 +32,7 @@ const Home = () => {
       });
   }
 
+  
   useEffect(() => {
     axios
       .get("/projects/all")
