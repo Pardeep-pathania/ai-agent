@@ -24,5 +24,9 @@ router.post('/register',
         authMiddleware.authUser, userController.logoutController
     );
 
+    router.get('/all',
+        authMiddleware.authUser, userController.getAllUsersController
+    );
+
 
 export default router;
