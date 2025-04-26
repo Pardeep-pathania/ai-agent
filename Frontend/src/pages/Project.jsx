@@ -1,19 +1,131 @@
-import React, { useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import React, { useEffect, useState, useContext } from "react";
+import { useLocation } from "react-router-dom";
+import axios from "../config/axios";
+import { initializeSocket, receiveMessage, sendMessage } from "../config/socket";
+import { UserContext } from "../context/user.context";
 
 const Project = () => {
   const location = useLocation();
 
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState(new Set());
+  const [project, setProject] = useState(location.state.project);
+  const [message, setMessage] = useState("");
+  const { user } = useContext(UserContext);
 
-  // console.log(location.state)
+  const messageBox = React.createRef()
+
+  const [users, setUsers] = useState([]);
+
+  const handleUserClick = (id) => {
+    setSelectedUserId((prevSelectedUserId) => {
+      const newSelectedUserId = new Set(prevSelectedUserId);
+      if (newSelectedUserId.has(id)) {
+        newSelectedUserId.delete(id); // Remove if already selected
+      } else {
+        newSelectedUserId.add(id); // Add if not selected
+      }
+      return newSelectedUserId;
+    });
+  };
+
+  function addCollaborators() {
+    axios
+      .put("/projects/add-user", {
+        projectId: location.state.project._id,
+        users: Array.from(selectedUserId), // Convert Set to Array
+      })
+      .then((res) => {
+        console.log(res.data);
+        setIsModalOpen(false);
+      })
+      .catch((err) => {
+        console.log(err);
+      });
+  }
+
+  const send=()=> {
+    
+    sendMessage("project-message", {
+      message,
+      sender: user.email,
+    });
+
+    appendOutgoingMessage(message)
+
+    setMessage("");
+  }
+
+  useEffect(() => {
+
+    initializeSocket(project._id);
+
+    receiveMessage("project-message", (data) => {
+      console.log(data);
+      appendIncomingMessage(data)
+    });
+
+
+
+    axios.get(`/projects/get-project/${location.state.project._id}`)
+      .then((res) => {
+        console.log(res.data.project)
+        setProject(res.data.project);
+      })
+      .catch((err) => {
+        console.log(err);
+      });
+
+    axios
+      .get("/users/all")
+      .then((res) => {
+        setUsers(res.data.users);
+      })
+      .catch((err) => {
+        console.log(err);
+      });
+  }, []);
+
+  function appendIncomingMessage(messageObject){
+
+    const messageBox = document.querySelector(".message-box")
+
+    const message = document.createElement("div")
+    message.classList.add('message', 'max-w-56', 'flex', 'flex-col', 'p-2', 'bg-slate-50', 'w-fit', 'rounded-md')
+    message.innerHTML = `
+    <small class="opacity-65 text-xs">${messageObject.sender}</small>
+    <p class="text-sm">${messageObject.message}</p>
+    `
+    messageBox.appendChild(message)
+
+    scrollToBottom()
+  }
+
+  function appendOutgoingMessage(message){
+    const messageBox = document.querySelector(".message-box")
+
+    const messageDiv = document.createElement("div")
+    messageDiv.classList.add('message', 'max-w-56', 'ml-auto', 'flex', 'flex-col', 'p-2', 'bg-slate-50', 'w-fit', 'rounded-md')
+    messageDiv.innerHTML = `
+    <small class="opacity-65 text-xs">${user.email}</small>
+    <p class="text-sm">${message}</p>
+    `
+    messageBox.appendChild(messageDiv)
+
+    scrollToBottom()
+  }
+
+  function scrollToBottom() {
+    const messageBox = document.querySelector(".message-box")
+    messageBox.scrollTop = messageBox.scrollHeight - messageBox.clientHeight
+  }
 
   return (
     <main className="h-screen width-screen flex">
-      <section className="left relative flex flex-col h-full min-w-96 bg-slate-300">
-        <header className="flex justify-between items-center p-2 px-4 w-full bg-slate-100">
-
-          <button className="flex gap-2">
+      <section className="left relative flex flex-col h-screen min-w-96 bg-slate-300">
+        <header className="flex justify-between items-center p-2 px-4 w-full bg-slate-100 absolute z-10 top-0">
+          <button onClick={() => setIsModalOpen(true)} className="flex gap-2">
             <i className="ri-add-fill mr-1"></i>
             <p>Add Collaborator</p>
           </button>
@@ -23,26 +135,25 @@ const Project = () => {
           </button>
         </header>
 
-        <div className="conversation-area flex-grow flex flex-col">
-          <div className="message-box p-1 flex-grow flex flex-col gap-2">
-            <div className=" message max-w-56 flex flex-col p-2 bg-slate-50 w-fit rounded-md">
-              <small className="opacity-65 text-xs">example@gmail.com</small>
-              <p className="text-sm">Lorem ipsum dolor sit amet.</p>
-            </div>
+        <div className="conversation-area pt-16 pb-10 flex-grow flex flex-col h-full relative">
 
-            <div className="message max-w-56 ml-auto flex flex-col p-2 bg-slate-50 w-fit rounded-md">
-              <small className="opacity-65 text-xs">example@gmail.com</small>
-              <p className="text-sm">Lorem ipsum dolor sit amet.</p>
-            </div>
+          <div
+          ref={messageBox}
+          className="message-box p-1 flex-grow flex flex-col gap-2 overflow-auto max-h-full [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] scroll-smooth">
+            
+            
           </div>
-
-          <div className="inputField w-full flex bg-amber-50">
+          <div className="inputField w-full flex bg-amber-50 absolute bottom-0">
             <input
+              onChange={(e) => setMessage(e.target.value)}
+              value={message}
               className="p-2 px-4 border-none outline-none flex-grow"
               type="text"
               placeholder="Enter message"
             />
-            <button className="px-4  bg-slate-950 text-white">
+            <button
+            onClick={send}
+            className="px-4 bg-slate-950 text-white">
               <i className="ri-send-plane-fill"></i>
             </button>
           </div>
@@ -53,26 +164,74 @@ const Project = () => {
             isSidePanelOpen ? "translate-x-0" : "-translate-x-full"
           } top-0`}
         >
-          <header className="flex justify-end px-4 p-2 bg-slate-200 ">
+          <header className="flex justify-between items-center px-4 p-2 bg-slate-200 ">
+            
+            <h1 className="font-semibold ">Collaborators</h1>
+            
             <button onClick={() => setIsSidePanelOpen(false)} className="p-2">
               <i className="ri-close-fill"></i>
             </button>
           </header>
 
           <div className="users flex flex-col gap-2">
-            <div className="user cursor-opointer hover:bg-slate-200 p-2 flex gap-2 items-center bg-slate-50 rounded-md">
+            
+            {
+              project.users && project.users.map(user =>{
+             return(
+              <div className="user cursor-pointer hover:bg-slate-200 p-2 flex gap-2 items-center bg-slate-50 rounded-md">
               <div className="aspect-circle w-fit h-fit flex items-center justify-center rounded-full p-4 bg-slate-600 text-white">
                 <i className="ri-user-fill absolute"></i>
               </div>
 
-              <h1 className="font-semibold">username</h1>
+              <h1 className="font-semibold">{user.email}</h1>
             </div>
+             )   
+              })
+            }
+
           </div>
         </div>
       </section>
 
-            
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-sm p-6">
+            <h2 className="text-lg font-bold mb-4">Select a User</h2>
+            <ul className="space-y-2 max-h-96 overflow-auto">
+              {users.map((user) => (
+                <li
+                  key={user._id}
+                  onClick={() => handleUserClick(user._id)}
+                  className={`p-2 bg-gray-100 rounded-md hover:bg-gray-200 ${
+                    selectedUserId.has(user._id) ? "bg-gray-200" : ""
+                  } cursor-pointer flex gap-2`}
+                >
+                  <div className="aspect-square relative rounded-full w-fit h-fit flex items-center justify-center p-4 bg-slate-600 text-white">
+                    <i className="ri-user-fill absolute"></i>
+                  </div>
+                  <h1>{user.email}</h1>
+                </li>
+              ))}
+            </ul>
 
+            <div className="flex justify-between">
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="mt-4 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
+              >
+                Close
+              </button>
+              <button
+                onClick={addCollaborators}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Add Collaborators
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 };
