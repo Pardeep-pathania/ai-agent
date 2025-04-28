@@ -1,8 +1,11 @@
-import React, { useEffect, useState, useContext } from "react";
+
+
+import React, { useState, useEffect, useContext, useRef } from "react";
+import { UserContext } from "../context/user.context";
 import { useLocation } from "react-router-dom";
 import axios from "../config/axios";
 import { initializeSocket, receiveMessage, sendMessage } from "../config/socket";
-import { UserContext } from "../context/user.context";
+import Markdown from "markdown-to-jsx";
 
 const Project = () => {
   const location = useLocation();
@@ -12,29 +15,28 @@ const Project = () => {
   const [selectedUserId, setSelectedUserId] = useState(new Set());
   const [project, setProject] = useState(location.state.project);
   const [message, setMessage] = useState("");
-  const { user } = useContext(UserContext);
-
-  const messageBox = React.createRef()
-
+  const [messages, setMessages] = useState([]); // State for messages
   const [users, setUsers] = useState([]);
+  const { user } = useContext(UserContext);
+  const messageBox = useRef(null);
 
   const handleUserClick = (id) => {
     setSelectedUserId((prevSelectedUserId) => {
       const newSelectedUserId = new Set(prevSelectedUserId);
       if (newSelectedUserId.has(id)) {
-        newSelectedUserId.delete(id); // Remove if already selected
+        newSelectedUserId.delete(id);
       } else {
-        newSelectedUserId.add(id); // Add if not selected
+        newSelectedUserId.add(id);
       }
       return newSelectedUserId;
     });
   };
 
-  function addCollaborators() {
+  const addCollaborators = () => {
     axios
       .put("/projects/add-user", {
         projectId: location.state.project._id,
-        users: Array.from(selectedUserId), // Convert Set to Array
+        users: Array.from(selectedUserId),
       })
       .then((res) => {
         console.log(res.data);
@@ -43,34 +45,34 @@ const Project = () => {
       .catch((err) => {
         console.log(err);
       });
-  }
+  };
 
-  const send=()=> {
-    
-    sendMessage("project-message", {
+  const send = () => {
+    if (!message.trim()) return; // Prevent sending empty messages
+
+    const outgoingMessage = {
       message,
-      sender: user.email,
-    });
+      sender: user,
+    };
 
-    appendOutgoingMessage(message)
+    sendMessage("project-message", outgoingMessage);
 
-    setMessage("");
-  }
+    setMessages((prevMessages) => [...prevMessages, outgoingMessage]); // Add message to state
+    setMessage(""); // Clear input field
+  };
 
   useEffect(() => {
-
     initializeSocket(project._id);
 
     receiveMessage("project-message", (data) => {
       console.log(data);
-      appendIncomingMessage(data)
+      setMessages((prevMessages) => [...prevMessages, data]); // Add received message to state
     });
 
-
-
-    axios.get(`/projects/get-project/${location.state.project._id}`)
+    axios
+      .get(`/projects/get-project/${location.state.project._id}`)
       .then((res) => {
-        console.log(res.data.project)
+        console.log(res.data.project);
         setProject(res.data.project);
       })
       .catch((err) => {
@@ -87,39 +89,11 @@ const Project = () => {
       });
   }, []);
 
-  function appendIncomingMessage(messageObject){
-
-    const messageBox = document.querySelector(".message-box")
-
-    const message = document.createElement("div")
-    message.classList.add('message', 'max-w-56', 'flex', 'flex-col', 'p-2', 'bg-slate-50', 'w-fit', 'rounded-md')
-    message.innerHTML = `
-    <small class="opacity-65 text-xs">${messageObject.sender}</small>
-    <p class="text-sm">${messageObject.message}</p>
-    `
-    messageBox.appendChild(message)
-
-    scrollToBottom()
-  }
-
-  function appendOutgoingMessage(message){
-    const messageBox = document.querySelector(".message-box")
-
-    const messageDiv = document.createElement("div")
-    messageDiv.classList.add('message', 'max-w-56', 'ml-auto', 'flex', 'flex-col', 'p-2', 'bg-slate-50', 'w-fit', 'rounded-md')
-    messageDiv.innerHTML = `
-    <small class="opacity-65 text-xs">${user.email}</small>
-    <p class="text-sm">${message}</p>
-    `
-    messageBox.appendChild(messageDiv)
-
-    scrollToBottom()
-  }
-
-  function scrollToBottom() {
-    const messageBox = document.querySelector(".message-box")
-    messageBox.scrollTop = messageBox.scrollHeight - messageBox.clientHeight
-  }
+  useEffect(() => {
+    if (messageBox.current) {
+      messageBox.current.scrollTop = messageBox.current.scrollHeight; // Scroll to bottom when messages update
+    }
+  }, [messages]);
 
   return (
     <main className="h-screen width-screen flex">
@@ -136,12 +110,32 @@ const Project = () => {
         </header>
 
         <div className="conversation-area pt-16 pb-10 flex-grow flex flex-col h-full relative">
-
           <div
-          ref={messageBox}
-          className="message-box p-1 flex-grow flex flex-col gap-2 overflow-auto max-h-full [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] scroll-smooth">
-            
-            
+            ref={messageBox}
+            className="message-box p-1 flex-grow flex flex-col gap-2 overflow-auto max-h-full [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] scroll-smooth"
+          >
+            {messages.map((msg, index) => (
+              <div
+                key={index}
+                className={`message max-w-80 flex flex-col p-2 w-fit rounded-md ${
+                  msg.sender.email === user.email
+                    ? "ml-auto bg-blue-100"
+                    : "bg-slate-50"
+                }`}
+              >
+                <small className="opacity-65 text-xs">{msg.sender.email}</small>
+                
+                  {msg.sender._id === "ai" ? 
+
+                  <div className="overflow-auto bg-slate-950 text-white rounded-sm p-2">
+                    <Markdown>{msg.message}</Markdown>
+                    </div>
+                   : (
+                    msg.message
+                  )}
+
+              </div>
+            ))}
           </div>
           <div className="inputField w-full flex bg-amber-50 absolute bottom-0">
             <input
@@ -151,9 +145,7 @@ const Project = () => {
               type="text"
               placeholder="Enter message"
             />
-            <button
-            onClick={send}
-            className="px-4 bg-slate-950 text-white">
+            <button onClick={send} className="px-4 bg-slate-950 text-white">
               <i className="ri-send-plane-fill"></i>
             </button>
           </div>
@@ -165,30 +157,27 @@ const Project = () => {
           } top-0`}
         >
           <header className="flex justify-between items-center px-4 p-2 bg-slate-200 ">
-            
             <h1 className="font-semibold ">Collaborators</h1>
-            
+
             <button onClick={() => setIsSidePanelOpen(false)} className="p-2">
               <i className="ri-close-fill"></i>
             </button>
           </header>
 
           <div className="users flex flex-col gap-2">
-            
-            {
-              project.users && project.users.map(user =>{
-             return(
-              <div className="user cursor-pointer hover:bg-slate-200 p-2 flex gap-2 items-center bg-slate-50 rounded-md">
-              <div className="aspect-circle w-fit h-fit flex items-center justify-center rounded-full p-4 bg-slate-600 text-white">
-                <i className="ri-user-fill absolute"></i>
-              </div>
+            {project.users &&
+              project.users.map((user) => (
+                <div
+                  key={user._id}
+                  className="user cursor-pointer hover:bg-slate-200 p-2 flex gap-2 items-center bg-slate-50 rounded-md"
+                >
+                  <div className="aspect-circle w-fit h-fit flex items-center justify-center rounded-full p-4 bg-slate-600 text-white">
+                    <i className="ri-user-fill absolute"></i>
+                  </div>
 
-              <h1 className="font-semibold">{user.email}</h1>
-            </div>
-             )   
-              })
-            }
-
+                  <h1 className="font-semibold">{user.email}</h1>
+                </div>
+              ))}
           </div>
         </div>
       </section>
