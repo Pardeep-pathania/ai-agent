@@ -6,6 +6,25 @@ import { useLocation } from "react-router-dom";
 import axios from "../config/axios";
 import { initializeSocket, receiveMessage, sendMessage } from "../config/socket";
 import Markdown from "markdown-to-jsx";
+import hljs from 'highlight.js';
+
+
+
+function SyntaxHighlightedCode(props) {
+  const ref = useRef(null)
+
+  React.useEffect(() => {
+      if (ref.current && props.className?.includes('lang-') && window.hljs) {
+          window.hljs.highlightElement(ref.current)
+
+          // hljs won't reprocess the element unless this attribute is removed
+          ref.current.removeAttribute('data-highlighted')
+      }
+  }, [ props.className, props.children ])
+
+  return <code {...props} ref={ref} />
+}
+
 
 const Project = () => {
   const location = useLocation();
@@ -17,8 +36,24 @@ const Project = () => {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]); // State for messages
   const [users, setUsers] = useState([]);
+  const [fileTree, setFileTree] = useState({
+    "app.js":{
+      content:`const express = require('express');`
+    },
+    "package.json":{
+      content:`{
+        "name": "temp-server",
+       
+      }`
+    }
+  });
+
+  const [currentFile , setCurrentFile] = useState(null);
+  const [openFiles, setOpenFiles] = useState([])
+
   const { user } = useContext(UserContext);
   const messageBox = useRef(null);
+
 
   const handleUserClick = (id) => {
     setSelectedUserId((prevSelectedUserId) => {
@@ -60,6 +95,27 @@ const Project = () => {
     setMessages((prevMessages) => [...prevMessages, outgoingMessage]); // Add message to state
     setMessage(""); // Clear input field
   };
+
+  function WriteAiMessage(message) {
+    try {
+      const messageObject = JSON.parse(message);
+      return (
+        <div className='overflow-auto bg-slate-950 text-white rounded-sm p-2'>
+          <Markdown
+            children={messageObject.text}
+            options={{
+              overrides: {
+                code: SyntaxHighlightedCode,
+              },
+            }}
+          />
+        </div>
+      );
+    } catch (error) {
+      console.error("Error parsing AI message:", error);
+      return <div>Error displaying AI message</div>;
+    }
+  }
 
   useEffect(() => {
     initializeSocket(project._id);
@@ -126,13 +182,11 @@ const Project = () => {
                 <small className="opacity-65 text-xs">{msg.sender.email}</small>
                 
                   {msg.sender._id === "ai" ? 
-
-                  <div className="overflow-auto bg-slate-950 text-white rounded-sm p-2">
-                    <Markdown>{msg.message}</Markdown>
-                    </div>
+                  
+               ( WriteAiMessage(msg.message) )
                    : (
                     msg.message
-                  )}
+                )}
 
               </div>
             ))}
@@ -180,6 +234,68 @@ const Project = () => {
               ))}
           </div>
         </div>
+      </section>
+
+      <section className="right flex-grow bg-red-50 h-full flex">
+
+        <div className="explorer h-full max-w-64 min-w-52 bg-slate-200">
+          <div className="file-tree w-full bg-slate-300 hover:bg-slate-300">
+            {
+              Object.keys(fileTree).map((file, index)=>(
+                <button
+                onClick={()=>{setCurrentFile(file)
+                  setOpenFiles([ ...new Set([ ...openFiles, file ]) ])
+                }}
+                className="tree-element cursor-pointer p-2 px-4 flex">
+                  <p
+                  className="font-semibold text-sm ">
+                    {file}
+                  </p>
+                </button>
+              ))
+            }
+          </div>
+        </div>
+
+        <div className="code-editor flex flex-col flex-grow h-full shrink">
+
+          <div className="top flex justify-between w-full">
+            <div className="files flex">
+            {
+              openFiles.map((file,index )=>(
+                <button
+                onClick = {() => setCurrentFile(file)}
+                className={`open-file cursor-pointer p-2 px-4 flex items-center gap-2 bg-slate-300 ${currentFile === file ? 'bg-slate-400' : ''} `}>
+                  <p className="text-sm font-semibold ">{file}</p>
+                </button>
+              ))
+            }
+            </div>
+          </div>
+
+          <div className="bottom flex flex-grow">
+            {
+              fileTree[currentFile] && (
+                <textarea
+                value={fileTree[currentFile].content}
+                onChange={(e)=>{
+                  setFileTree({
+                    ...fileTree,
+                    [currentFile]: {
+                      content: e.target.value
+                    }
+                  })
+                }}
+                className="w-full h-full p-4 bg-slate-100 outline-none border-none">
+
+                </textarea>
+              )
+
+            }
+          </div>
+
+        </div>
+
       </section>
 
       {/* Modal */}

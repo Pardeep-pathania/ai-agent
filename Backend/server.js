@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import projectModel from "./models/project.model.js";
+import { generateResult } from "./services/ai.service.js";
 
 const port = process.env.PORT || 3000;
 
@@ -46,17 +47,38 @@ io.use(async (socket, next) => {
 });
 
 io.on("connection", (socket) => {
-
   socket.roomId = socket.project._id.toString();
 
   console.log("a user connected");
 
   socket.join(socket.roomId);
 
-  socket.on('project-message', data =>{
-    console.log(data)
-    socket.broadcast.to(socket.roomId).emit('project-message', data)
-  })
+  socket.on("project-message", async (data) => {
+    const message = data.message;
+
+    const aiIsPresentInMessage = message.includes("@ai");
+
+    if (aiIsPresentInMessage) {
+      console.log("AI is present in the message");
+
+     const prompt = message.replace("@ai", "");
+
+     const result = await generateResult(prompt);
+
+     io.to(socket.roomId).emit("project-message", {
+      
+      message: result,
+
+      sender:
+          {_id: 'ai',
+          email: "AI",}
+     })
+     
+      return;
+    }
+
+    socket.broadcast.to(socket.roomId).emit("project-message", data);
+  });
 
   socket.on("disconnect", () => {
     console.log("user disconnected");
